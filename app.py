@@ -96,11 +96,13 @@ if df is not None:
         c3.metric("移動停損價", f"{exit_price:.2f}" if not pd.isna(exit_price) else "N/A")
         c4.metric("進場訊號", "🔥 符合" if df['Entry_Signal'].iloc[-1] else "⏳ 等待")
         
-        # 2. 警示通知
-        if df['Entry_Signal'].iloc[-1]:
-            st.success(f"🔥 **進場訊號觸發**：{ticker} 今日量價齊揚，符合突破條件！")
-        if not pd.isna(exit_price) and curr_price < exit_price:
-            st.error(f"⚠️ **獲利了結警示**：價格低於移動停利點 ({exit_price:.2f})，建議賣出。")
+        # 2. 警示通知 - 使用容器避免 DOM 問題
+        alert_container = st.container()
+        with alert_container:
+            if df['Entry_Signal'].iloc[-1]:
+                st.success(f"🔥 **進場訊號觸發**：{ticker} 今日量價齊揚，符合突破條件！")
+            elif not pd.isna(exit_price) and curr_price < exit_price:
+                st.error(f"⚠️ **獲利了結警示**：價格低於移動停利點 ({exit_price:.2f})，建議賣出。")
         
         # 3. 互動式 Plotly 圖表
         fig = go.Figure()
@@ -119,25 +121,25 @@ if df is not None:
         
         fig.update_layout(title=f"{ticker} 技術分析圖表", xaxis_title="日期", yaxis_title="價格", 
                          hovermode='x unified', height=500)
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True, key="stock_chart_" + ticker)
         
         # 4. 自動選股雷達按鈕
-        if st.button("🔍 掃描今日熱門股訊號"):
-            st.info("正在掃描，請稍候...")
-            watch_list = ["2330.TW", "2317.TW", "2454.TW", "2382.TW", "3231.TW", "2308.TW"]
-            matches = []
-            progress_bar = st.progress(0)
-            
-            for idx, t in enumerate(watch_list):
-                temp_df, _ = fetch_and_process(t, vol_ratio, rsi_limit, trailing_pct)
-                if temp_df is not None and temp_df['Entry_Signal'].iloc[-1]:
-                    matches.append(t)
-                progress_bar.progress((idx + 1) / len(watch_list))
-            
-            if matches:
-                st.success(f"✅ 今日符合強勢突破標的：{', '.join(matches)}")
-            else:
-                st.info("⏳ 熱門股中今日暫無符合條件的標的。")
+        if st.button("🔍 掃描今日熱門股訊號", key="scan_btn"):
+            with st.spinner("正在掃描，請稍候..."):
+                watch_list = ["2330.TW", "2317.TW", "2454.TW", "2382.TW", "3231.TW", "2308.TW"]
+                matches = []
+                progress_bar = st.progress(0)
+                
+                for idx, t in enumerate(watch_list):
+                    temp_df, _ = fetch_and_process(t, vol_ratio, rsi_limit, trailing_pct)
+                    if temp_df is not None and temp_df['Entry_Signal'].iloc[-1]:
+                        matches.append(t)
+                    progress_bar.progress((idx + 1) / len(watch_list))
+                
+                if matches:
+                    st.success(f"✅ 今日符合強勢突破標的：{', '.join(matches)}")
+                else:
+                    st.info("⏳ 熱門股中今日暫無符合條件的標的。")
 
 else:
     st.error(f"❌ {status_msg}")
