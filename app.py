@@ -5,14 +5,14 @@ import pandas_ta as ta
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-# 1. 配置
+# 1. 基礎設定
 st.set_page_config(page_title="台股狙擊 Pro", layout="wide")
 
 # 2. 核心名單
 TW_LIST = ["2330.TW","2317.TW","2454.TW","2308.TW","2382.TW","3231.TW","2881.TW","2882.TW",
            "2303.TW","3711.TW","2603.TW","2609.TW","1513.TW","1519.TW","1503.TW","3017.TW"]
 
-# 3. 繪圖函數 (排除假日 + 成交量)
+# 3. 繪圖函數 (量價合一 + 排除假日)
 def draw_chart(df, name):
     d = df.tail(60)
     fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.1, row_heights=[0.7, 0.3])
@@ -25,10 +25,10 @@ def draw_chart(df, name):
     fig.add_trace(go.Bar(x=d.index, y=d['Volume'], name="成交量", marker_color=colors), row=2, col=1)
     
     fig.update_xaxes(rangebreaks=[dict(bounds=["sat", "mon"])]) # 排除假日
-    fig.update_layout(height=500, template="plotly_dark", xaxis_rangeslider_visible=False, title=name)
+    fig.update_layout(height=500, template="plotly_dark", xaxis_rangeslider_visible=False, title=name, margin=dict(t=30, b=10))
     return fig
 
-# 4. 分析邏輯
+# 4. 分析邏輯 (五大評等)
 @st.cache_data(ttl=3600)
 def analyze(sid, vr, tp):
     try:
@@ -37,7 +37,7 @@ def analyze(sid, vr, tp):
         if df.empty or len(df) < 150: return None
         if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
         
-        # 中文名稱
+        # 中文名稱清理
         n = t.info.get('longName', sid).split('Co')[0].split('Inc')[0].strip()
         df = df.astype(float)
         df['MA200'] = ta.sma(df['Close'], length=200)
@@ -47,8 +47,18 @@ def analyze(sid, vr, tp):
         
         last = df.iloc[-1]
         c, s, v, ma, hi = last['Close'], last['Trailing_Stop'], last['Volume'], last['MA200'], last['Max20']
+        vma = last['VMA5']
         
+        # 評等邏輯
         if c < s: adv = "🔴 避險賣出"
-        elif c > ma and c > hi and v > last['VMA5'] * vr: adv = "🔥 強力買進"
-        elif c > ma and c > hi: adv = "⚡ 建議買進
-            
+        elif c > ma and c > hi and v > vma * vr: adv = "🔥 強力買進"
+        elif c > ma and c > hi: adv = "⚡ 建議買進"
+        elif c > ma: adv = "🔵 持股觀察"
+        else: adv = "⚪ 觀望等待"
+        return {"df": df, "name": n, "adv": adv, "stop": s, "price": c}
+    except: return None
+
+# 5. UI 介面
+st.title("🏹 台股強勢狙擊系統 Pro")
+with st.sidebar:
+    v_m = st
