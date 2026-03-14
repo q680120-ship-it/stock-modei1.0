@@ -61,4 +61,36 @@ def analyze(sid, vr, tp):
 # 5. UI 介面
 st.title("🏹 台股強勢狙擊系統 Pro")
 with st.sidebar:
-    v_m = st
+    v_m = st.slider("成交量爆發倍數", 1.0, 3.0, 1.5)
+    e_p = st.slider("移動停利 %", 5, 20, 10) / 100
+    target = st.text_input("輸入代碼", "2330.TW").upper()
+
+res = analyze(target, v_m, e_p)
+if res:
+    st.subheader(f"{res['name']} ({target}) | {res['adv']}")
+    c1, c2, c3 = st.columns(3)
+    c1.metric("目前股價", f"{res['price']:.2f}")
+    c2.metric("建議停利價", f"{res['stop']:.2f}")
+    c3.info(f"建議策略：{res['adv']}")
+    st.plotly_chart(draw_chart(res['df'], ""), use_container_width=True)
+
+st.divider()
+if st.button("🚀 啟動 200 檔全自動掃描"):
+    cats = {"🔥 強力買進":[], "⚡ 建議買進":[], "🔴 避險賣出":[], "🔵 持股觀察":[], "⚪ 觀望等待":[]}
+    pb = st.progress(0)
+    for i, sid in enumerate(TW_LIST):
+        d = analyze(sid, v_m, e_p)
+        if d: cats[d['adv']].append(d)
+        pb.progress((i+1)/len(TW_LIST))
+    
+    for lv in ["🔥 強力買進", "⚡ 建議買進", "🔴 避險賣出", "🔵 持股觀察", "⚪ 觀望等待"]:
+        if cats[lv]:
+            with st.expander(f"{level} ({len(cats[lv])} 檔)", expanded=(lv in ["🔥 強力買進", "⚡ 建議買進", "🔴 避險賣出"])):
+                for item in cats[lv]:
+                    col1, col2 = st.columns([1, 2])
+                    with col1:
+                        st.write(f"### {item['name']}")
+                        st.metric("現價", f"{item['price']:.2f}")
+                        st.error(f"停利價: {item['stop']:.2f}")
+                    with col2:
+                        st.plotly_chart(draw_chart(item['df'], ""), use_container_width=True)
