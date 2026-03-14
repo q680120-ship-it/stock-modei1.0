@@ -6,9 +6,9 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 # 1. 頁面配置
-st.set_page_config(page_title="台股 120 狙擊終端 Pro", layout="wide")
+st.set_page_config(page_title="台股 120 狙擊 Pro", layout="wide")
 
-# 2. 精選 120 檔名單 (分組編排防止截斷)
+# 2. 核心名單 (分組)
 G1 = ["2330.TW","2317.TW","2454.TW","2308.TW","2382.TW","3231.TW","2357.TW","4938.TW","2356.TW","2324.TW"]
 G2 = ["2303.TW","3711.TW","2379.TW","3034.TW","2408.TW","3661.TW","3443.TW","6415.TW","3035.TW","3583.TW"]
 G3 = ["3017.TW","3324.TW","3037.TW","8046.TW","2368.TW","2313.TW","2421.TW","3515.TW","2351.TW","6213.TW"]
@@ -24,7 +24,29 @@ G12 = ["3008.TW","3406.TW","3481.TW","2409.TW","2344.TW","5347.TWO","5434.TW","6
 
 TW_LIST = sorted(list(set(G1+G2+G3+G4+G5+G6+G7+G8+G9+G10+G11+G12)))
 
-# 3. 分析與回測引擎
+# 3. 繪圖核心 (修正 Plotly 語法)
+def draw_chart(df, sid, name):
+    d = df.tail(80)
+    fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.08, row_heights=[0.7, 0.3])
+    
+    # K線
+    fig.add_trace(go.Candlestick(x=d.index, open=d['Open'], high=d['High'], low=d['Low'], close=d['Close'], name="K線"), row=1, col=1)
+    
+    # 停利線 (橘色虛線)
+    fig.add_trace(go.Scatter(x=d.index, y=d['TS'], name="停利價", line=dict(color='orange', width=2, dash='dash')), row=1, col=1)
+    
+    # 年線 (修正點：將 opacity 移出 line 字典)
+    fig.add_trace(go.Scatter(x=d.index, y=d['MA'], name="年線", line=dict(color='rgba(255,255,255,0.5)', width=1)), row=1, col=1)
+    
+    # 成交量
+    clrs = ['#EF5350' if c >= o else '#26A69A' for o, c in zip(d['Open'], d['Close'])]
+    fig.add_trace(go.Bar(x=d.index, y=d['Volume'], marker_color=clrs, name="成交量"), row=2, col=1)
+    
+    fig.update_xaxes(rangebreaks=[dict(bounds=["sat", "mon"])])
+    fig.update_layout(height=500, template="plotly_dark", xaxis_rangeslider_visible=False, title=f"{name} ({sid})")
+    return fig
+
+# 4. 分析與回測引擎
 @st.cache_data(ttl=3600)
 def analyze_data(sid, vr, tp):
     try:
@@ -40,7 +62,6 @@ def analyze_data(sid, vr, tp):
         df['M20'] = df['Close'].shift(1).rolling(20).max()
         df['TS'] = df['Close'].rolling(22).max() * (1 - tp)
         
-        # 簡易回測
         trades = []
         in_pos, buy_p = False, 0
         for i in range(200, len(df)):
@@ -69,19 +90,6 @@ def analyze_data(sid, vr, tp):
                 "win": win_rate, "ret": total_ret, "cnt": len(trades)}
     except: return None
 
-# 4. 繪圖
-def draw_chart(df, sid, name):
-    d = df.tail(80)
-    fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.08, row_heights=[0.7, 0.3])
-    fig.add_trace(go.Candlestick(x=d.index, open=d['Open'], high=d['High'], low=d['Low'], close=d['Close'], name="K線"), 1, 1)
-    fig.add_trace(go.Scatter(x=d.index, y=d['TS'], name="停利線", line=dict(color='orange', dash='dash')), 1, 1)
-    fig.add_trace(go.Scatter(x=d.index, y=d['MA'], name="年線", line=dict(color='white', width=1, opacity=0.5)), 1, 1)
-    clrs = ['red' if c >= o else 'green' for o, c in zip(d['Open'], d['Close'])]
-    fig.add_trace(go.Bar(x=d.index, y=d['Volume'], marker_color=clrs, name="成交量"), 2, 1)
-    fig.update_xaxes(rangebreaks=[dict(bounds=["sat", "mon"])])
-    fig.update_layout(height=500, template="plotly_dark", xaxis_rangeslider_visible=False, title=f"{name} ({sid})")
-    return fig
-
 # 5. UI
 st.title("🏹 台股 120 狙擊終端 Pro")
 
@@ -99,7 +107,7 @@ if d:
     c2.metric("回測勝率", f"{d['win']:.1f}%")
     c3.metric("累積報酬", f"{d['ret']:.1f}%")
     c4.metric("交易次數", d['cnt'])
-    st.plotly_chart(draw_chart(d['df'], d['sid'], d['name']), use_container_width=True)
+    st.plotly_chart(draw_chart(d['df'], d['sid'], d['name']), use_container_width=True, key=f"main_{d['sid']}")
 
 st.divider()
 if st.button(f"🚀 啟動 120 檔全量掃描"):
@@ -120,4 +128,4 @@ if st.button(f"🚀 啟動 120 檔全量掃描"):
                         st.write(f"勝率: **{item['win']:.1f}%** | 報酬: **{item['ret']:.1f}%**")
                         st.metric("現價", f"{item['price']:.2f}", delta=f"停利:{item['stop']:.1f}")
                     with col2:
-                        st.plotly_chart(draw_chart(item['df'], item['sid'], item['name']), use_container_width=True, key=f"s_{item['sid']}")
+                        st.plotly_chart(draw_chart(item['df'], item['sid'], item['name']), use_container_width=True, key=f"scan_{item['sid']}")
